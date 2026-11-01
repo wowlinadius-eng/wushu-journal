@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Журнал занятий</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one narrow column — month switcher, month summary, then student rows that unfold into a tappable calendar. */
+:root{
+  --bg:#EDF1EE; --surface:#FFFFFF; --ink:#17201C; --muted:#5B6A64; --line:#D3DCD7;
+  --accent:#1D6A54; --accent-ink:#FFFFFF; --accent-soft:#DAEBE3;
+  --due:#B0442D; --due-soft:#F6E2DC;
+  --display:"Unbounded","Manrope",system-ui,sans-serif;
+  --body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111714; --surface:#19211D; --ink:#E5ECE8; --muted:#91A19A; --line:#2A3530;
+  --accent:#5DBE9B; --accent-ink:#0E1A15; --accent-soft:#1D3A30;
+  --due:#E3806A; --due-soft:#3B2520; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#111714; --surface:#19211D; --ink:#E5ECE8; --muted:#91A19A; --line:#2A3530;
+  --accent:#5DBE9B; --accent-ink:#0E1A15; --accent-soft:#1D3A30;
+  --due:#E3806A; --due-soft:#3B2520; color-scheme:dark;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+
+header{display:flex;flex-direction:column;gap:4px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(22px,6vw,30px);line-height:1.15;margin:0;text-wrap:balance}
+
+.month{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.month h2{font-family:var(--display);font-weight:500;font-size:18px;margin:0;text-transform:capitalize}
+.arrow{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-size:18px;display:grid;place-items:center}
+
+.summary{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px;display:grid;gap:14px}
+.earned .label{color:var(--muted);font-size:13px;font-weight:600}
+.earned .big{font-family:var(--display);font-weight:700;font-size:clamp(30px,9vw,40px);line-height:1.1}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cell{border-radius:12px;padding:10px 12px;display:grid;gap:2px}
+.cell.ok{background:var(--accent-soft)} .cell.wait{background:var(--due-soft)}
+.cell .label{font-size:12px;font-weight:600;color:var(--muted)}
+.cell .v{font-weight:700;font-size:18px}
+.cell.ok .v{color:var(--accent)} .cell.wait .v{color:var(--due)}
+
+.note{font-size:13px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:10px 12px}
+
+.list{display:flex;flex-direction:column;gap:8px}
+.listhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.listhead h3{margin:0;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.st{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.st.archived{opacity:.7}
+.row{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 14px}
+.who{flex:1;min-width:0;text-align:left;background:none;border:0;padding:4px 0;display:grid;gap:1px}
+.who .n{font-weight:700;font-size:16px;overflow-wrap:anywhere}
+.who .m{font-size:13px;color:var(--muted)}
+.pay{border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700;border:1.5px solid var(--due);color:var(--due);background:transparent;white-space:nowrap;min-height:38px}
+.pay.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.pay.none{border-color:var(--line);color:var(--muted)}
+
+.panel{border-top:1px solid var(--line);padding:12px 14px 14px;display:grid;gap:12px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.wd{font-size:11px;text-align:center;color:var(--muted);font-weight:600;padding-bottom:2px}
+.d{aspect-ratio:1;max-width:100%;border-radius:10px;border:1px solid var(--line);background:transparent;font-weight:600;font-size:14px;display:grid;place-items:center;padding:0}
+.d.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.d.today{box-shadow:inset 0 0 0 2px var(--accent)}
+.d.on.today{box-shadow:inset 0 0 0 2px var(--accent-ink)}
+.d.we:not(.on){color:var(--muted)}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.btn{border-radius:10px;padding:9px 12px;font-size:14px;font-weight:600;border:1px solid var(--line);background:var(--surface);min-height:40px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--due);border-color:var(--due)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+
+.add{display:flex;gap:8px}
+.add input,.field{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.empty{text-align:center;padding:28px 16px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:14px}
+.empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
+
+footer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+footer .price{font-weight:700;color:var(--ink)}
+.priceedit{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.priceedit input{width:120px;flex:none}
+@media (prefers-reduced-motion: no-preference){.panel{animation:open .18s ease-out}@keyframes open{from{opacity:.4;transform:translateY(-4px)}}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Ушу · журнал занятий</div>
+    <h1>Анастасия Дмитриевна</h1>
+  </header>
+
+  <div class="month">
+    <button class="arrow" id="prev" aria-label="Предыдущий месяц">←</button>
+    <h2 id="mtitle">ноябрь 2026</h2>
+    <button class="arrow" id="next" aria-label="Следующий месяц">→</button>
+  </div>
+
+  <section class="summary" aria-label="Итоги месяца">
+    <div class="earned">
+      <div class="label" id="lessonsLine">Заработано за месяц</div>
+      <div class="big num" id="earned">0 ₽</div>
+    </div>
+    <div class="split">
+      <div class="cell ok"><span class="label">Оплачено</span><span class="v num" id="received">0 ₽</span></div>
+      <div class="cell wait"><span class="label">Ждёт оплаты</span><span class="v num" id="pending">0 ₽</span></div>
+    </div>
+  </section>
+
+  <div class="note" id="status" hidden></div>
+
+  <section class="list">
+    <div class="listhead"><h3>Ученики</h3><span class="m num" id="count" style="font-size:13px;color:var(--muted)"></span></div>
+    <div id="students"></div>
+    <form class="add" id="addForm" autocomplete="off">
+      <input id="newName" placeholder="Имя нового ученика" aria-label="Имя нового ученика">
+      <button class="btn primary" type="submit">Добавить</button>
+    </form>
+  </section>
+
+  <footer id="footer"></footer>
+</div>
+<script>
+const MONTHS=["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+const WD=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+const pad=n=>String(n).padStart(2,"0");
+const now=new Date();
+const todayKey=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+const rub=n=>n.toLocaleString("ru-RU")+" ₽";
+const plural=(n,a,b,c)=>{const m10=n%10,m100=n%100;return m10===1&&m100!==11?a:(m10>=2&&m10<=4&&(m100<10||m100>=20)?b:c)};
+const lessons=n=>`${n} ${plural(n,"занятие","занятия","занятий")}`;
+
+/* ---------- Telegram ---------- */
+const tg=window.Telegram&&window.Telegram.WebApp;
+const inTg=!!(tg&&tg.initData);
+const hasCloud=!!(inTg&&tg.CloudStorage&&tg.isVersionAtLeast&&tg.isVersionAtLeast("6.9"));
+function applyTheme(){
+  if(!inTg)return;
+  document.documentElement.setAttribute("data-theme",tg.colorScheme==="dark"?"dark":"light");
+  try{const bg=getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();if(/^#[0-9a-f]{6}$/i.test(bg)){tg.setHeaderColor(bg);tg.setBackgroundColor(bg)}}catch(e){}
+}
+function haptic(kind){try{if(!inTg||!tg.HapticFeedback)return;kind==="sel"?tg.HapticFeedback.selectionChanged():tg.HapticFeedback.impactOccurred("light")}catch(e){}}
+if(tg){try{tg.ready();tg.expand()}catch(e){}applyTheme();try{tg.onEvent("themeChanged",()=>{applyTheme();render()})}catch(e){}}
+
+/* ---------- storage: Telegram Cloud, or this browser when opened outside Telegram ---------- */
+const store={
+  get(keys){return new Promise(res=>{
+    if(hasCloud){tg.CloudStorage.getItems(keys,(err,vals)=>res(err?null:(vals||{})))}
+    else{const o={};keys.forEach(k=>{try{o[k]=localStorage.getItem("wj_"+k)||""}catch(e){o[k]=""}});res(o)}
+  })},
+  set(k,v){return new Promise((res,rej)=>{
+    if(v.length>4000){rej(new Error("too_big"));return}
+    if(hasCloud){tg.CloudStorage.setItem(k,v,(err)=>err?rej(err):res())}
+    else{try{localStorage.setItem("wj_"+k,v)}catch(e){}res()}
+  })}
+};
+const timers={},pendingVal={};let chain=Promise.resolve();
+function save(k,v){
+  pendingVal[k]=v;clearTimeout(timers[k]);
+  timers[k]=setTimeout(()=>{const val=pendingVal[k];delete pendingVal[k];
+    chain=chain.then(()=>store.set(k,val)).catch(e=>showStatus(e&&e.message==="too_big"
+      ?"Слишком много данных за этот месяц, запись не сохранилась."
+      :"Не удалось сохранить. Проверьте интернет и повторите отметку."));
+  },300);
+}
+function showStatus(t){const el=document.getElementById("status");el.textContent=t||"";el.hidden=!t}
+const parse=(s,def)=>{try{return s?JSON.parse(s):def}catch(e){return def}};
+
+/* ---------- state ---------- */
+const S={y:now.getFullYear(),m:now.getMonth(),students:[],md:{},price:3000,open:null,confirmDel:null,renaming:null,editPrice:false,ready:false};
+const mkey=()=>`${S.y}-${pad(S.m+1)}`;
+const mStoreKey=()=>"m_"+mkey();
+
+async function init(){
+  render();
+  if(!inTg)showStatus("Открыто вне Telegram: данные сохраняются только в этом браузере.");
+  else if(!hasCloud)showStatus("Обновите Telegram: эта версия не умеет сохранять данные в облаке.");
+  const v=await store.get(["students","price"]);
+  if(v===null){showStatus("Не удалось загрузить данные из Telegram. Закройте и откройте журнал ещё раз.");return}
+  S.students=parse(v.students,[]);S.price=Number(v.price)||3000;
+  await loadMonth();
+}
+async function loadMonth(){
+  const key=mStoreKey(),v=await store.get([key]);
+  if(key!==mStoreKey())return;
+  S.md=v?parse(v[key],{}):{};S.ready=true;render();
+}
+
+/* ---------- actions ---------- */
+const recFor=sid=>S.md[sid]||{d:[],p:0,pr:S.price};
+function saveMonth(){save(mStoreKey(),JSON.stringify(S.md))}
+function saveStudents(){save("students",JSON.stringify(S.students))}
+function toggleDate(sid,day){
+  const r=recFor(sid),d=r.d.includes(day)?r.d.filter(x=>x!==day):[...r.d,day].sort((a,b)=>a-b);
+  S.md[sid]={...r,d,pr:r.d.length?r.pr:S.price};
+  if(!d.length&&!r.p)delete S.md[sid];
+  haptic("sel");render();saveMonth();
+}
+function togglePaid(sid){const r=recFor(sid);S.md[sid]={...r,p:r.p?0:1};haptic("tap");render();saveMonth()}
+function addStudent(name){S.students.push({id:"s"+Date.now().toString(36),name,a:0});render();saveStudents()}
+function savePrice(v){S.price=v;S.editPrice=false;render();save("price",String(v))}
+
+/* ---------- render ---------- */
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function render(){
+  document.getElementById("mtitle").textContent=`${MONTHS[S.m]} ${S.y}`;
+  const vis=S.students.filter(s=>!s.a||(S.md[s.id]&&S.md[s.id].d.length))
+    .sort((a,b)=>(a.a-b.a)||String(a.name).localeCompare(String(b.name),"ru"));
+  let earned=0,received=0,total=0;
+  Object.values(S.md).forEach(r=>{const sum=r.d.length*(r.pr||S.price);earned+=sum;total+=r.d.length;if(r.p)received+=sum});
+  document.getElementById("earned").textContent=rub(earned);
+  document.getElementById("received").textContent=rub(received);
+  document.getElementById("pending").textContent=rub(earned-received);
+  document.getElementById("lessonsLine").textContent=`Заработано за месяц · ${lessons(total)}`;
+  document.getElementById("count").textContent=vis.length?`${vis.length}`:"";
+
+  const box=document.getElementById("students");
+  if(!S.ready)box.innerHTML=`<div class="empty">Загружаю журнал…</div>`;
+  else if(!vis.length)box.innerHTML=`<div class="empty"><b>Пока нет учеников</b>Впишите имя ниже и нажмите «Добавить». Потом нажмите на ученика, чтобы отмечать занятия по датам.</div>`;
+  else box.innerHTML=`<div class="list">${vis.map(rowHtml).join("")}</div>`;
+
+  const f=document.getElementById("footer");
+  f.innerHTML=S.editPrice
+    ?`<form class="priceedit" id="priceForm"><label for="priceIn">Стоимость занятия, ₽</label><input class="field num" id="priceIn" inputmode="numeric" value="${S.price}"><button class="btn primary" type="submit">Сохранить</button><button class="btn ghost" type="button" data-act="cancelprice">Отмена</button></form>`
+    :`Стоимость занятия: <span class="price num">${rub(S.price)}</span><button class="btn ghost" data-act="editprice">изменить</button>`;
+}
+function rowHtml(s){
+  const r=recFor(s.id),n=r.d.length,sum=n*(r.pr||S.price),open=S.open===s.id;
+  const payCls=n===0&&!r.p?"pay none":(r.p?"pay on":"pay");
+  return `<div class="st${s.a?" archived":""}">
+    <div class="row">
+      <button class="who" data-act="open" data-id="${s.id}" aria-expanded="${open}">
+        <span class="n">${esc(s.name)}${s.a?" · удалён":""}</span>
+        <span class="m num">${lessons(n)} · ${rub(sum)}</span>
+      </button>
+      <button class="${payCls}" data-act="paid" data-id="${s.id}" aria-pressed="${!!r.p}">${r.p?"Оплачено":"Не оплачено"}</button>
+    </div>
+    ${open?panelHtml(s,r):""}
+  </div>`;
+}
+function panelHtml(s,r){
+  const first=new Date(S.y,S.m,1),days=new Date(S.y,S.m+1,0).getDate(),lead=(first.getDay()+6)%7;
+  const isCur=todayKey.startsWith(mkey()),today=isCur?now.getDate():0;
+  let cells=WD.map(w=>`<div class="wd">${w}</div>`).join("")+"<div></div>".repeat(lead);
+  for(let d=1;d<=days;d++){
+    const on=r.d.includes(d),we=((lead+d-1)%7)>=5;
+    cells+=`<button class="d num${on?" on":""}${d===today?" today":""}${we?" we":""}" data-act="day" data-id="${s.id}" data-day="${d}" aria-pressed="${on}" aria-label="${d} ${MONTHS[S.m]}">${d}</button>`;
+  }
+  let acts;
+  if(S.renaming===s.id) acts=`<form class="add" data-form="rename" data-id="${s.id}" style="flex:1 1 100%"><input id="rn-${s.id}" value="${esc(s.name)}" aria-label="Новое имя"><button class="btn primary" type="submit">Сохранить</button></form>`;
+  else if(S.confirmDel===s.id) acts=`<span style="flex:1 1 100%;font-size:14px">Убрать ${esc(s.name)} из списка? Отмеченные занятия останутся в итогах.</span><button class="btn danger" data-act="del" data-id="${s.id}">Да, убрать</button><button class="btn ghost" data-act="nodel">Отмена</button>`;
+  else acts=`${today&&!r.d.includes(today)?`<button class="btn primary" data-act="day" data-id="${s.id}" data-day="${today}">Отметить сегодня</button>`:""}
+    ${s.a?`<button class="btn" data-act="restore" data-id="${s.id}">Вернуть в список</button>`:`<button class="btn" data-act="rename" data-id="${s.id}">Переименовать</button><button class="btn ghost" data-act="askdel" data-id="${s.id}">Удалить</button>`}`;
+  return `<div class="panel"><div class="cal">${cells}</div><div class="actions">${acts}</div></div>`;
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]");if(!b)return;
+  const id=b.dataset.id,act=b.dataset.act,s=S.students.find(x=>x.id===id);
+  if(act==="open"){S.open=S.open===id?null:id;S.confirmDel=null;S.renaming=null;render()}
+  else if(act==="paid")togglePaid(id);
+  else if(act==="day")toggleDate(id,Number(b.dataset.day));
+  else if(act==="askdel"){S.confirmDel=id;render()}
+  else if(act==="nodel"){S.confirmDel=null;render()}
+  else if(act==="del"&&s){S.confirmDel=null;S.open=null;s.a=1;render();saveStudents()}
+  else if(act==="restore"&&s){s.a=0;render();saveStudents()}
+  else if(act==="rename"){S.renaming=id;render();const i=document.getElementById("rn-"+id);if(i){i.focus();i.select()}}
+  else if(act==="editprice"){S.editPrice=true;render();document.getElementById("priceIn").focus()}
+  else if(act==="cancelprice"){S.editPrice=false;render()}
+});
+document.addEventListener("submit",e=>{
+  e.preventDefault();const f=e.target;
+  if(f.id==="addForm"){const i=document.getElementById("newName"),v=i.value.trim();if(v){addStudent(v);i.value="";i.blur()}}
+  else if(f.id==="priceForm"){const v=parseInt(document.getElementById("priceIn").value.replace(/\D/g,""),10);if(v>0)savePrice(v)}
+  else if(f.dataset.form==="rename"){const s=S.students.find(x=>x.id===f.dataset.id),v=f.querySelector("input").value.trim();
+    if(s&&v){s.name=v;S.renaming=null;render();saveStudents()}}
+});
+function shift(d){S.m+=d;if(S.m<0){S.m=11;S.y--}if(S.m>11){S.m=0;S.y++}S.open=null;S.confirmDel=null;S.ready=false;S.md={};render();loadMonth()}
+document.getElementById("prev").onclick=()=>shift(-1);
+document.getElementById("next").onclick=()=>shift(1);
+init();
+
+</script>
+</body>
+</html>
